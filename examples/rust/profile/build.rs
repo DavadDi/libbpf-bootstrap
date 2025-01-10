@@ -1,5 +1,5 @@
 use std::env;
-use std::env::consts::ARCH;
+use std::ffi::OsStr;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -12,21 +12,15 @@ fn main() {
         PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR must be set in build script"));
     out.push("profile.skel.rs");
 
+    let arch = env::var("CARGO_CFG_TARGET_ARCH")
+        .expect("CARGO_CFG_TARGET_ARCH must be set in build script");
+
     SkeletonBuilder::new()
         .source(SRC)
-        .clang_args(format!(
-            "-I{}",
-            Path::new("../../../vmlinux")
-                .join(match ARCH {
-                    "aarch64" => "arm64",
-                    "loongarch64" => "loongarch",
-                    "powerpc64" => "powerpc",
-                    "riscv64" => "riscv",
-                    "x86_64" => "x86",
-                    _ => ARCH,
-                })
-                .display()
-        ))
+        .clang_args([
+            OsStr::new("-I"),
+            Path::new("../../../vmlinux.h/include").join(arch).as_os_str()
+        ])
         .build_and_generate(out)
         .expect("bpf compilation failed");
     println!("cargo:rerun-if-changed={}", SRC);

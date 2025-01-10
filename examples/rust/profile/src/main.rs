@@ -1,5 +1,6 @@
 use std::io;
 use std::mem;
+use std::mem::MaybeUninit;
 use std::time::Duration;
 
 use blazesym::symbolize;
@@ -42,7 +43,7 @@ struct stacktrace_event {
     ustack: [u64; MAX_STACK_DEPTH],
 }
 
-fn init_perf_monitor(freq: u64) -> Result<Vec<i32>, libbpf_rs::Error> {
+fn init_perf_monitor(freq: u64, sw_event: bool) -> Result<Vec<i32>, libbpf_rs::Error> {
     let nprocs = libbpf_rs::num_possible_cpus().unwrap();
     let pid = -1;
     let buf: Vec<u8> = vec![0; mem::size_of::<syscall::perf_event_attr>()];
@@ -51,17 +52,30 @@ fn init_perf_monitor(freq: u64) -> Result<Vec<i32>, libbpf_rs::Error> {
             buf.leak().as_mut_ptr() as *mut syscall::perf_event_attr
         )
     };
-    attr._type = syscall::PERF_TYPE_HARDWARE;
+    attr._type = if sw_event {
+        syscall::PERF_TYPE_SOFTWARE
+    } else {
+        syscall::PERF_TYPE_HARDWARE
+    };
     attr.size = mem::size_of::<syscall::perf_event_attr>() as u32;
-    attr.config = syscall::PERF_COUNT_HW_CPU_CYCLES;
+    attr.config = if sw_event {
+        syscall::PERF_COUNT_SW_CPU_CLOCK
+    } else {
+        syscall::PERF_COUNT_HW_CPU_CYCLES
+    };
     attr.sample.sample_freq = freq;
     attr.flags = 1 << 10; // freq = 1
     (0..nprocs)
         .map(|cpu| {
             let fd = syscall::perf_event_open(attr.as_ref(), pid, cpu as i32, -1, 0) as i32;
             if fd == -1 {
-                Err(libbpf_rs::Error::from(io::Error::last_os_error()))
-                    .context("failed to open perf event")
+                let mut error_context = "Failed to open perf event.";
+                let os_error = io::Error::last_os_error();
+                if !sw_event && os_error.kind() == io::ErrorKind::NotFound {
+                    error_context = "Failed to open perf event.\n\
+                                    Try running the profile example with the `--sw-event` option.";
+                }
+                Err(libbpf_rs::Error::from(os_error)).context(error_context)
             } else {
                 Ok(fd)
             }
@@ -71,7 +85,7 @@ fn init_perf_monitor(freq: u64) -> Result<Vec<i32>, libbpf_rs::Error> {
 
 fn attach_perf_event(
     pefds: &[i32],
-    prog: &mut libbpf_rs::Program,
+    prog: &libbpf_rs::ProgramMut,
 ) -> Vec<Result<libbpf_rs::Link, libbpf_rs::Error>> {
     pefds
         .iter()
@@ -119,7 +133,7 @@ fn print_frame(
 // Pid 0 means a kernel space stack.
 fn show_stack_trace(stack: &[u64], symbolizer: &symbolize::Symbolizer, pid: u32) {
     let converted_stack;
-    // The kernel always reports `u64` addresses, whereas blazesym uses `usize`.
+    // The kernel always reports `u64` addresses, whereas blazesym uses `Addr`.
     // Convert the stack trace as necessary.
     let stack = if mem::size_of::<blazesym::Addr>() != mem::size_of::<u64>() {
         converted_stack = stack
@@ -163,7 +177,7 @@ fn show_stack_trace(stack: &[u64], symbolizer: &symbolize::Symbolizer, pid: u32)
                     print_frame(&frame.name, None, &frame.code_info);
                 }
             }
-            symbolize::Symbolized::Unknown => {
+            symbolize::Symbolized::Unknown(..) => {
                 println!("{input_addr:#0width$x}: <no-symbol>", width = ADDR_WIDTH)
             }
         }
@@ -223,6 +237,12 @@ struct Args {
     /// Increase verbosity (can be supplied multiple times).
     #[arg(short = 'v', long = "verbose", global = true, action = ArgAction::Count)]
     verbosity: u8,
+    /// Use software event for triggering stack trace capture.
+    ///
+    /// This can be useful for compatibility reasons if hardware event is not available
+    /// (which could happen in a virtual machine, for example).
+    #[arg(long = "sw-event")]
+    sw_event: bool,
 }
 
 fn main() -> Result<(), libbpf_rs::Error> {
@@ -246,16 +266,16 @@ fn main() -> Result<(), libbpf_rs::Error> {
     let symbolizer = symbolize::Symbolizer::new();
 
     let skel_builder = ProfileSkelBuilder::default();
-    let open_skel = skel_builder.open().unwrap();
-    let mut skel = open_skel.load().unwrap();
+    let mut open_object = MaybeUninit::uninit();
+    let open_skel = skel_builder.open(&mut open_object).unwrap();
+    let skel = open_skel.load().unwrap();
 
-    let pefds = init_perf_monitor(freq)?;
-    let _links = attach_perf_event(&pefds, skel.progs_mut().profile());
+    let pefds = init_perf_monitor(freq, args.sw_event)?;
+    let _links = attach_perf_event(&pefds, &skel.progs.profile);
 
-    let maps = skel.maps();
     let mut builder = libbpf_rs::RingBufferBuilder::new();
     builder
-        .add(maps.events(), move |data| event_handler(&symbolizer, data))
+        .add(&skel.maps.events, move |data| event_handler(&symbolizer, data))
         .unwrap();
     let ringbuf = builder.build().unwrap();
     while ringbuf.poll(Duration::MAX).is_ok() {}

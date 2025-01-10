@@ -1,6 +1,7 @@
 # libbpf-bootstrap: demo BPF applications
 
 [![Github Actions](https://github.com/libbpf/libbpf-bootstrap/actions/workflows/build.yml/badge.svg)](https://github.com/libbpf/libbpf-bootstrap/actions/workflows/build.yml)
+[![Github Actions](https://github.com/libbpf/libbpf-bootstrap/actions/workflows/build-android.yml/badge.svg)](https://github.com/libbpf/libbpf-bootstrap/actions/workflows/build-android.yml)
 
 ## minimal
 
@@ -110,7 +111,7 @@ TIME     EVENT COMM             PID     PPID    FILENAME/EXIT CODE
 ## uprobe
 
 `uprobe` is an example of dealing with user-space entry and exit (return) probes,
-`uprobe` and `uretprobe` in libbpf lingo. It attached `uprobe` and `uretprobe`
+`uprobe` and `uretprobe`, in libbpf lingo. It attaches `uprobe` and `uretprobe`
 BPF programs to its own functions (`uprobed_add()` and `uprobed_sub()`) and logs input arguments
 and return result, respectively, using `bpf_printk()` macro. The user-space
 function is triggered once every second:
@@ -196,7 +197,7 @@ $ sudo cat /sys/kernel/debug/tracing/trace_pipe
 ## kprobe
 
 `kprobe` is an example of dealing with kernel-space entry and exit (return)
-probes, `kprobe` and `kretprobe` in libbpf lingo. It attaches `kprobe` and
+probes, `kprobe` and `kretprobe`, in libbpf lingo. It attaches `kprobe` and
 `kretprobe` BPF programs to the `do_unlinkat()` function and logs the PID,
 filename, and return result, respectively, using `bpf_printk()` macro.
 
@@ -320,6 +321,33 @@ Task Info. Pid: 3647645. Process Name: TTLSFWorker59. Kernel Stack Len: 3. State
 Task Info. Pid: 1600495. Process Name: tmux: client. Kernel Stack Len: 6. State: INTERRUPTIBLE
 Task Info. Pid: 1600497. Process Name: tmux: server. Kernel Stack Len: 0. State: RUNNING
 Task Info. Pid: 1600498. Process Name: bash. Kernel Stack Len: 5. State: INTERRUPTIBLE
+```
+
+## lsm
+`lsm` serves as an illustrative example of utilizing [LSM BPF](https://docs.kernel.org/bpf/prog_lsm.html). In this example, the `bpf()` system call is effectively blocked. Once the `lsm` program is operational, its successful execution can be confirmed by using the `bpftool prog list` command.
+
+```shell
+$ sudo ./lsm
+libbpf: loading object 'lsm_bpf' from buffer
+...
+Successfully started! Please run `sudo cat /sys/kernel/debug/tracing/trace_pipe` to see output of the BPF programs.
+..........
+```
+
+The output from `lsm` in `/sys/kernel/debug/tracing/trace_pipe` is expected to resemble the following:
+
+````shell
+$ sudo cat /sys/kernel/debug/tracing/trace_pipe
+         bpftool-70646   [002] ...11 279318.416393: bpf_trace_printk: LSM: block bpf() worked
+         bpftool-70646   [002] ...11 279318.416532: bpf_trace_printk: LSM: block bpf() worked
+         bpftool-70646   [002] ...11 279318.416533: bpf_trace_printk: LSM: block bpf() worked
+````
+
+When the `bpf()` system call gets blocked, the `bpftool prog list` command yields the following output:
+
+```shell
+$ sudo bpftool prog list
+Error: can't get next program: Operation not permitted
 ```
 
 # Building

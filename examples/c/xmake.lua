@@ -13,7 +13,7 @@ option("require-bpftool",    {showmenu = true, default = false, description = "R
 
 add_requires("elfutils", "zlib")
 if is_plat("android") then
-    add_requires("ndk >=22.x", "argp-standalone")
+    add_requires("ndk >=22.x <26", "argp-standalone")
     set_toolchains("@ndk", {sdkver = "23"})
 else
     add_requires("llvm >=10.x")
@@ -26,19 +26,19 @@ end
 set_symbols("none")
 
 if is_arch("arm64", "arm64-v8a") then
-    add_includedirs("../../vmlinux/arm64")
+    add_includedirs("../../vmlinux.h/include/arm64")
 elseif is_arch("arm.*") then
-    add_includedirs("../../vmlinux/arm")
+    add_includedirs("../../vmlinux.h/include/arm")
 elseif is_arch("riscv32", "riscv64") then
-    add_includedirs("../../vmlinux/riscv")
+    add_includedirs("../../vmlinux.h/include/riscv")
 elseif is_arch("loongarch") then
-    add_includedirs("../../vmlinux/loongarch")
+    add_includedirs("../../vmlinux.h/include/loongarch")
 elseif is_arch("ppc", "powerpc") then
-    add_includedirs("../../vmlinux/powerpc")
+    add_includedirs("../../vmlinux.h/include/powerpc")
 elseif is_arch("x86_64", "i386") then
-    add_includedirs("../../vmlinux/x86")
+    add_includedirs("../../vmlinux.h/include/x86")
 else
-    add_includedirs("../../vmlinux")
+    add_includedirs("../../vmlinux.h/include")
 end
 
 -- we can run `xmake f --require-bpftool=y` to pull bpftool from xmake-repo repository

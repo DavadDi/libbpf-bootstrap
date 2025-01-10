@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 
 cmake_minimum_required(VERSION 3.16)
-project(examples)
+project(examples C)
 
 # Tell cmake where to find BpfObject module
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../../tools/cmake)
@@ -42,7 +42,7 @@ if(CARGO_EXISTS)
     PREFIX blazesym
     SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../blazesym
     CONFIGURE_COMMAND ""
-    BUILD_COMMAND cargo build --release
+    BUILD_COMMAND cargo build --package=blazesym-c --release
     BUILD_IN_SOURCE TRUE
     INSTALL_COMMAND ""
     STEP_TARGETS build
@@ -68,7 +68,7 @@ elseif(${CMAKE_SYSTEM_PROCESSOR} MATCHES "loongarch64")
 endif()
 
 set(BPFOBJECT_BPFTOOL_EXE ${CMAKE_CURRENT_BINARY_DIR}/bpftool/bootstrap/bpftool)
-set(BPFOBJECT_VMLINUX_H ${CMAKE_CURRENT_SOURCE_DIR}/../../vmlinux/${ARCH}/vmlinux.h)
+set(BPFOBJECT_VMLINUX_H ${CMAKE_CURRENT_SOURCE_DIR}/../../vmlinux.h/include/${ARCH}/vmlinux.h)
 set(LIBBPF_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/libbpf)
 set(LIBBPF_LIBRARIES ${CMAKE_CURRENT_BINARY_DIR}/libbpf/libbpf.a)
 find_package(BpfObject REQUIRED)
@@ -89,8 +89,8 @@ foreach(app ${apps})
   target_link_libraries(${app_stem} ${app_stem}_skel)
   if(${app_stem} STREQUAL profile)
     target_include_directories(${app_stem} PRIVATE
-      ${CMAKE_CURRENT_SOURCE_DIR}/../../blazesym/include)
+      ${CMAKE_CURRENT_SOURCE_DIR}/../../blazesym/capi/include)
     target_link_libraries(${app_stem}
-      ${CMAKE_CURRENT_SOURCE_DIR}/../../blazesym/target/release/libblazesym.a -lpthread -lrt -ldl)
+      ${CMAKE_CURRENT_SOURCE_DIR}/../../blazesym/target/release/libblazesym_c.a -lpthread -lrt -ldl)
   endif()
 endforeach()
